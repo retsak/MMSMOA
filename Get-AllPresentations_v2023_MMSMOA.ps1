@@ -92,7 +92,7 @@ $urls | ForEach-Object {
                 }
                 #Escape Brackets - PowerShell 5.1
                 if (($PSVersionTable.PSVersion).Major -ne 7) {
-                    $filename = $filename.Replace('[', '`[').Replace(']', '`]')
+                    $filename = $filename.Replace('[', '').Replace(']', '')
                 }
                 if (!(Test-Path "$folder\$eventName")) {
                     New-Item -Type Directory -Path "$folder\$eventName"
