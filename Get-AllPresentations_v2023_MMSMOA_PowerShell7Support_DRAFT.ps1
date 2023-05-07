@@ -63,11 +63,11 @@ if ($schedUserName -ne "blank") {
 }
 
 $urls = @(
-    'https://mms2023atmoa.sched.com/2022-04-30/list/descriptions',
-    'https://mms2023atmoa.sched.com/2022-05-01/list/descriptions',
-    'https://mms2023atmoa.sched.com/2022-05-02/list/descriptions',
-    'https://mms2023atmoa.sched.com/2022-05-03/list/descriptions',
-    'https://mms2023atmoa.sched.com/2022-05-04/list/descriptions'
+    'https://mms2023atmoa.sched.com/2023-04-30/list/descriptions',
+    'https://mms2023atmoa.sched.com/2023-05-01/list/descriptions',
+    'https://mms2023atmoa.sched.com/2023-05-02/list/descriptions',
+    'https://mms2023atmoa.sched.com/2023-05-03/list/descriptions',
+    'https://mms2023atmoa.sched.com/2023-05-04/list/descriptions'
 )
 
 $urls | ForEach-Object {
