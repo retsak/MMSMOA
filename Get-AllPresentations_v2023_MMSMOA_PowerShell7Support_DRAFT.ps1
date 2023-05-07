@@ -1,7 +1,22 @@
 <#
     This code is still a work in progress - it should be functional but you may run into issues.
 #>
+$conferenceName = "mms2023atmoa"
+$dates = @(
+    '2023-04-30',
+    '2023-05-01',
+    '2023-05-02',
+    '2023-05-03',
+    '2023-05-04'
+)
+$urls = @()
+$dates | ForEach-Object {$urls += "https://$conferenceName.sched.com/$psitem/list/descriptions"}
+
+$MaxThreads = 10
+$ThrottleLimit = $MaxThreads
+
 Add-Type -AssemblyName System.Windows.Forms
+$progressPreference = 'silentlyContinue'
 
 # Select a folder
 $FileBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -16,6 +31,8 @@ if ($FileBrowser.ShowDialog() -eq "OK") {
 }
 
 Read-Host "This will download all presentations to: $folder (press enter to continue)"
+
+try {
 
 #Downlaod HtmlAgilityPack.dll
 if (!(Test-Path $folder\HtmlAgilityPack\lib\netstandard2.0\HtmlAgilityPack.dll -ErrorAction SilentlyContinue)) {
@@ -35,40 +52,15 @@ if ($null -eq $schedCreds.UserName) {
 }
 
 if ($schedUserName -ne "blank") {
-    #Password is used to create a new web session variable that is used to download the files
-    Invoke-WebRequest -UseBasicParsing -Uri "https://mms2023atmoa.sched.com/login" `
-        -Method "POST" `
-        -Headers @{
-        "Accept"                    = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
-        "Accept-Encoding"           = "gzip, deflate, br"
-        "Accept-Language"           = "en-US,en;q=0.9"
-        "Cache-Control"             = "max-age=0"
-        "DNT"                       = "1"
-        "Origin"                    = "https://mms2023atmoa.sched.com"
-        "Referer"                   = "https://mms2023atmoa.sched.com/login"
-        "Sec-Fetch-Dest"            = "document"
-        "Sec-Fetch-Mode"            = "navigate"
-        "Sec-Fetch-Site"            = "same-origin"
-        "Sec-Fetch-User"            = "?1"
+    Invoke-WebRequest -UseBasicParsing -Uri "https://$conferenceName.sched.com/login" -Method "POST" -Headers @{
+        "Accept" = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+        "Origin" = "https://$conferenceName.sched.com"
+        "Referer" = "https://$conferenceName.sched.com/login"
         "Upgrade-Insecure-Requests" = "1"
-        "sec-ch-ua"                 = "`" Not A;Brand`";v=`"99`", `"Chromium`";v=`"100`", `"Microsoft Edge`";v=`"100`""
-        "sec-ch-ua-mobile"          = "?0"
-        "sec-ch-ua-platform"        = "`"Windows`""
-    } `
-        -ContentType "application/x-www-form-urlencoded" `
-        -Body "landing_conf=https%3A%2F%2Fmms2023atmoa.sched.com&username=$schedUserName&password=$schedPassword&login=" `
-        -SessionVariable newSession | Out-Null
+    } -ContentType "application/x-www-form-urlencoded" -Body "landing_conf=https%3A%2F%2F$conferenceName.sched.com&username=$schedUserName&password=$schedPassword&login=" -SessionVariable newSession | Out-Null
 
     Write-Output "Using authenticated session."
 }
-
-$urls = @(
-    'https://mms2023atmoa.sched.com/2023-04-30/list/descriptions',
-    'https://mms2023atmoa.sched.com/2023-05-01/list/descriptions',
-    'https://mms2023atmoa.sched.com/2023-05-02/list/descriptions',
-    'https://mms2023atmoa.sched.com/2023-05-03/list/descriptions',
-    'https://mms2023atmoa.sched.com/2023-05-04/list/descriptions'
-)
 
 $urls | ForEach-Object {
     $url = $_
@@ -94,14 +86,14 @@ $urls | ForEach-Object {
             $eventName = $eventName -replace '[\x00-\x1F\x7F<>:"/\\|?*]', '_'
             Write-Output "$($eventName):"
             $files = $result.SelectNodes('.//div[contains(@class, "sched-file")]/a[@href]')
-            $files | ForEach-Object {
+            $files | ForEach-Object -ThrottleLimit $MaxThreads -Parallel {
                 $file = $_
                 $fileUrl = $file.GetAttributeValue("href", "")
                 $fileName = [uri]::UnescapeDataString(($fileUrl -split '/')[-1])
                 $fileName = $fileName -replace '[\x00-\x1F\x7F<>:"/\\|?*]', '_'
                 
                 Write-Output "  $filename"
-                $eventFolderPath = Join-Path $folder $eventName
+                $eventFolderPath = Join-Path $using:folder $using:eventName
                 if (!(Test-Path $eventFolderPath)) {
                     New-Item -Type Directory -Path $eventFolderPath
                 }
@@ -109,13 +101,19 @@ $urls | ForEach-Object {
                 $destinationPath = Join-Path $eventFolderPath $fileName
                 if (!(Test-Path $destinationPath)) {
                     if ($newSession) {
-                        Invoke-WebRequest $fileUrl -OutFile $destinationPath -Verbose -WebSession $newSession
+                        Invoke-RestMethod -Uri $fileUrl -OutFile $destinationPath -WebSession $newSession
                     }
                     else {
-                        Invoke-WebRequest $fileUrl -OutFile $destinationPath -Verbose
+                        Invoke-RestMethod -Uri $fileUrl -OutFile $destinationPath
                     }
                 }
             }
         }
     }
+}
+} catch {
+    Write-Error $_
+} finally {
+    Remove-Item -Path $folder\HtmlAgilityPack.$HtmlAgilityPackversion.nupkg -ErrorAction SilentlyContinue
+    Remove-Item -Path $folder\HtmlAgilityPack\ -Recurse -Force -ErrorAction SilentlyContinue    
 }
