@@ -13,7 +13,6 @@ $urls = @()
 $dates | ForEach-Object {$urls += "https://$conferenceName.sched.com/$psitem/list/descriptions"}
 
 $MaxThreads = 10
-$ThrottleLimit = $MaxThreads
 
 Add-Type -AssemblyName System.Windows.Forms
 $progressPreference = 'silentlyContinue'
