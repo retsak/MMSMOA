@@ -1,3 +1,19 @@
+<#
+.SYNOPSIS
+    Script downloads presentations from the "mms2023atmoa" conference.
+.DESCRIPTION
+    This PowerShell script downloads presentations from the "mms2023atmoa" conference.
+    It retrieves the presentations' URLs from the conference's schedule webpage and saves the files to a user-selected folder.
+    The script also supports authenticated sessions if the user provides their sched.com credentials.
+.NOTES
+    This is written for Windows PowerShell (5.1)
+.LINK
+    https://github.com/retsak/2023_MMSMOA
+.EXAMPLE
+    ."Get-AllPresentations_v2023_MMSMOA.ps1"
+#>
+
+# Define the conference name and the conference schedule dates
 $conferenceName = "mms2023atmoa"
 $dates = @(
     '2023-04-30',
@@ -6,7 +22,9 @@ $dates = @(
     '2023-05-03',
     '2023-05-04'
 )
+# Initialize an array to store the URLs of the presentations
 $urls = @()
+#Loop through the dates and generate the URLs for the presentations
 $dates | ForEach-Object { $urls += "https://$conferenceName.sched.com/$psitem/list/descriptions" }
 
 # Adds the System.Windows.Forms assembly to access the FolderBrowserDialog class
@@ -54,17 +72,25 @@ if ($schedUserName -ne "blank") {
 
     Write-Output "Using authenticated session."
 }
-
+# Iterate over the URLs of the presentations
 $urls | ForEach-Object {
     $url = $_
-    $res = Invoke-WebRequest -Uri $url -WebSession $newSession
+    # Send requests with or without authenticated sessions
+    if ($newSession) {
+        $res = Invoke-WebRequest -Uri $url -WebSession $newSession
+    }
+    else {
+        $res = Invoke-WebRequest -Uri $url
+    }
 
+    # Find the sched-container elements containing the presentation files
     $res.ParsedHtml.documentElement.getElementsByClassName('sched-container') | ForEach-Object {
         $result = $_
         if ($result.innerHTML -like "*sched-container-inner*" -and $result.innerHTML -like "*sched-file*") {
             $eventName = (($result.innerText).Split([Environment]::NewLine)[0]).Trim()
             $eventName = $eventName -replace '[\\/:*?"<>|]', '_'
 
+            # Iterate over the sched-container elements and checks if the element contains presentation files
             $result.getElementsByTagName('div') | Where-Object { $_.ClassName -match '\bsched-file\b' } | ForEach-Object {
                 $file = $_.innerHTML
                 $fileUrl = ($file.Split(" ") | Where-Object { $_ -match "href" }).replace("href=", "").replace('"', '')
@@ -74,11 +100,13 @@ $urls | ForEach-Object {
                     $fileName = $fileName.Replace('[', '').Replace(']', '')
                 }
 
+                # Create a directory for each event if it doesn't exist
                 $eventPath = Join-Path $folder $eventName
                 if (!(Test-Path $eventPath)) {
                     New-Item -Type Directory -Path $eventPath
                 }
 
+                # Download the file to the destination folder
                 $filePath = Join-Path $eventPath $fileName
                 if (!(Test-Path $filePath)) {
                     Write-Output "Downloading $fileName to: $filePath"
