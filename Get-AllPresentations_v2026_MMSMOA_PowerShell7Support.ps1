@@ -127,8 +127,8 @@ $urls | ForEach-Object {
                 # Download the file to the destination folder
                 $destinationPath = Join-Path $eventFolderPath $fileName
                 if (!(Test-Path $destinationPath)) {
-                    if ($newSession) {
-                        Invoke-RestMethod -Uri $fileUrl -OutFile $destinationPath -WebSession $newSession -ErrorAction SilentlyContinue
+                    if ($using:newSession) {
+                        Invoke-RestMethod -Uri $fileUrl -OutFile $destinationPath -WebSession $using:newSession -ErrorAction SilentlyContinue
                     }
                     else {
                         Invoke-RestMethod -Uri $fileUrl -OutFile $destinationPath -ErrorAction SilentlyContinue
