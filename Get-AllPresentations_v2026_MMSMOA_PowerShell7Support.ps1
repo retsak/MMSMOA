@@ -31,21 +31,38 @@ $dates | ForEach-Object {$urls += "https://$conferenceName.sched.com/$psitem/lis
 # Set the maximum number of concurrent threads for downloading files
 $MaxThreads = 10
 
-# Load System.Windows.Forms assembly for user input dialogs
-Add-Type -AssemblyName System.Windows.Forms
+# Resolve destination folder (dialog on supported platforms, prompt fallback otherwise)
+$folder = $null
 $progressPreference = 'silentlyContinue'
+try {
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+    # Create and configure a FileBrowser dialog to select a folder
+    $FileBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
+    $FileBrowser.Description = "Select a folder"
+    $FileBrowser.rootfolder = "MyComputer"
+    $FileBrowser.SelectedPath = $initialDirectory
 
-# Create and configure a FileBrowser dialog to select a folder
-$FileBrowser = New-Object System.Windows.Forms.FolderBrowserDialog
-$FileBrowser.Description = "Select a folder"
-$FileBrowser.rootfolder = "MyComputer"
-$FileBrowser.SelectedPath = $initialDirectory
+    # Show the FileBrowser dialog and store the selected folder path
+    if ($FileBrowser.ShowDialog() -eq "OK") {
+        $folder = $FileBrowser.SelectedPath
+    }
+}
+catch {
+    Write-Output "Folder dialog unavailable. Please enter a destination path."
+}
 
-# Show the FileBrowser dialog and store the selected folder path
-if ($FileBrowser.ShowDialog() -eq "OK") {
-    $folder = $FileBrowser.SelectedPath
-} else {
-    break
+while ([string]::IsNullOrWhiteSpace($folder) -or -not (Test-Path -LiteralPath $folder -PathType Container)) {
+    $folder = Read-Host "Enter folder path for downloads"
+    if ([string]::IsNullOrWhiteSpace($folder)) {
+        continue
+    }
+
+    if (-not (Test-Path -LiteralPath $folder)) {
+        $createFolder = Read-Host "Path does not exist. Create it? (Y/N)"
+        if ($createFolder -match '^(?i:y|yes)$') {
+            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        }
+    }
 }
 
 # Confirm the download location with the user
@@ -83,6 +100,7 @@ if ($schedUserName -ne "blank") {
     Write-Output "Using authenticated session."
 }
 # Iterate over the URLs of the presentations
+$unnamedSessionCounter = 0
 $urls | ForEach-Object {
     $url = $_
     # Send requests with or without authenticated sessions
@@ -105,9 +123,21 @@ $urls | ForEach-Object {
         $result = $_
         # Check if the element contains presentation files
         if ($result.InnerHtml.Contains("sched-container-inner") -and $result.InnerHtml.Contains("sched-file")) {
-            $pattern = '<a.*?class="name".*?>([\s\S]*?)<\/a>'
-            $eventName = [regex]::Match($result.InnerHtml, $pattern)
-            $eventName = $eventName.Value.Split(">")[1].Trim().Split("<")[0].Trim()
+            $eventName = $null
+            $eventNameNode = $result.SelectSingleNode('.//a[contains(@class, "name")]')
+            if ($eventNameNode) {
+                $eventName = [HtmlAgilityPack.HtmlEntity]::DeEntitize($eventNameNode.InnerText).Trim()
+            }
+
+            if ([string]::IsNullOrWhiteSpace($eventName)) {
+                $eventName = ($result.InnerText -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -First 1)
+            }
+
+            if ([string]::IsNullOrWhiteSpace($eventName)) {
+                $unnamedSessionCounter++
+                $eventName = "Session_$unnamedSessionCounter"
+            }
+
             $eventName = $eventName -replace '[\x00-\x1F\x7F<>:"/\\|?*]', '_'
             Write-Output "$($eventName):"
             # Find and iterate over the file links in the sched-file elements
@@ -127,8 +157,8 @@ $urls | ForEach-Object {
                 # Download the file to the destination folder
                 $destinationPath = Join-Path $eventFolderPath $fileName
                 if (!(Test-Path $destinationPath)) {
-                    if ($newSession) {
-                        Invoke-RestMethod -Uri $fileUrl -OutFile $destinationPath -WebSession $newSession -ErrorAction SilentlyContinue
+                    if ($using:newSession) {
+                        Invoke-RestMethod -Uri $fileUrl -OutFile $destinationPath -WebSession $using:newSession -ErrorAction SilentlyContinue
                     }
                     else {
                         Invoke-RestMethod -Uri $fileUrl -OutFile $destinationPath -ErrorAction SilentlyContinue
